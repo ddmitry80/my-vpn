@@ -1,0 +1,18 @@
+[project]
+name = "my-vpn"
+version = "0.1.0"
+description = "Personal VPN manager wrapping Shadowsocks & Tun2Socks"
+requires-python = ">=3.10"
+dependencies = [
+    "typer",
+    "python-dotenv",
+    "requests",  # Для скачивания бинарников (если нужно)
+    "rich",      # Для красивых логов
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project.scripts]
+my-vpn = "src.main:app"
