@@ -9,30 +9,39 @@
 1) Конфиг:
 
 ```bash
-cp .env.example .env
-$EDITOR .env
+mkdir -p ~/.config/my-vpn
+cp .env.example ~/.config/my-vpn/.env
+$EDITOR ~/.config/my-vpn/.env
 ```
 
-По умолчанию `.env` ищется вверх от текущей директории. Если запускаешь не из корня репозитория — укажи явно:
+По умолчанию `my-vpn` читает конфиг из `$XDG_CONFIG_HOME/my-vpn/.env` (или `~/.config/my-vpn/.env`), а если файла нет — ищет `.env` вверх от текущей директории.
+Можно переопределить через `--env-file /path/to/.env` или env `MY_VPN_ENV_FILE=/path/to/.env`.
 
 ```bash
-uv run my-vpn --env-file /path/to/.env status
+my-vpn --env-file /path/to/.env status
 ```
 
-2) Зависимости (portable user-space, без sudo):
+2) Установка CLI (чтобы `my-vpn` работал из любого места):
 
 ```bash
-uv sync
-uv run my-vpn install-deps
+uv tool install -e .
+```
+
+Для разработки в репозитории можно использовать: `uv sync` и `uv run my-vpn ...`.
+
+3) Зависимости (portable user-space, без sudo):
+
+```bash
+my-vpn install-deps
 ```
 
 По умолчанию бинарники кладутся в `~/.local/share/my-vpn/bin` (или `$XDG_DATA_HOME/my-vpn/bin`).
 Можно переопределить через `MY_VPN_BIN_DIR`.
 
-3) Запуск (нужен root для сети/маршрутов):
+4) Запуск (нужен root для сети/маршрутов):
 
 ```bash
-uv run my-vpn start
+my-vpn start
 ```
 
 ## Команды

@@ -18,6 +18,7 @@ console = Console()
 # Имя проекта для XDG путей
 APP_DIRNAME = "my-vpn"
 ENV_BIN_DIR = "MY_VPN_BIN_DIR"
+ENV_ENV_FILE = "MY_VPN_ENV_FILE"
 
 # === КОНФИГУРАЦИЯ ВЕРСИЙ ===
 # Можно обновлять версии здесь
@@ -53,6 +54,26 @@ def get_bin_dir() -> Path:
     home = _effective_user_home()
     data_home = Path(os.environ.get("XDG_DATA_HOME", str(home / ".local" / "share"))).expanduser()
     return data_home / APP_DIRNAME / "bin"
+
+def get_env_file() -> Path | None:
+    """
+    Путь к .env (конфигу).
+    Приоритет:
+      1) $MY_VPN_ENV_FILE
+      2) $XDG_CONFIG_HOME/my-vpn/.env или ~/.config/my-vpn/.env (учитывая sudo/SUDO_USER)
+      3) None (тогда вызывающий код может искать относительно cwd)
+    """
+    override = os.environ.get(ENV_ENV_FILE)
+    if override:
+        override = override.strip()
+        if override.startswith("~/"):
+            return _effective_user_home() / override[2:]
+        return Path(override).expanduser()
+
+    home = _effective_user_home()
+    config_home = Path(os.environ.get("XDG_CONFIG_HOME", str(home / ".config"))).expanduser()
+    candidate = config_home / APP_DIRNAME / ".env"
+    return candidate if candidate.exists() else None
 
 def ensure_bin_dir_in_path(bin_dir: Path) -> None:
     bin_dir_str = str(bin_dir)

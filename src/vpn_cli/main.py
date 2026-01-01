@@ -15,6 +15,7 @@ from vpn_cli.utils import (
     ensure_bin_dir_in_path,
     find_binary,
     get_bin_dir,
+    get_env_file,
 )
 
 app = typer.Typer(help="Personal VPN manager wrapping Shadowsocks & Tun2Socks")
@@ -23,6 +24,10 @@ console = Console()
 def _load_env(env_file: str | None) -> None:
     if env_file:
         load_dotenv(env_file)
+        return
+    default_env = get_env_file()
+    if default_env:
+        load_dotenv(default_env)
         return
     auto = find_dotenv(usecwd=True)
     if auto:
@@ -33,7 +38,7 @@ def _main(
     env_file: str | None = typer.Option(
         None,
         "--env-file",
-        help="Path to .env (default: search upward from current directory)",
+        help="Path to .env (default: $XDG_CONFIG_HOME/my-vpn/.env, then search upward from current directory)",
     ),
 ):
     _load_env(env_file)
@@ -57,7 +62,9 @@ def _reexec_with_sudo() -> None:
             "SOCKS_PORT",
             "TUN_DEV",
             "TUN_ADDR",
+            "MY_VPN_ENV_FILE",
             "MY_VPN_BIN_DIR",
+            "XDG_CONFIG_HOME",
             "XDG_DATA_HOME",
         ]
     )
