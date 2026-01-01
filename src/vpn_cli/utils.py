@@ -45,6 +45,9 @@ def get_bin_dir() -> Path:
     """
     override = os.environ.get(ENV_BIN_DIR)
     if override:
+        override = override.strip()
+        if override.startswith("~/"):
+            return _effective_user_home() / override[2:]
         return Path(override).expanduser()
 
     home = _effective_user_home()

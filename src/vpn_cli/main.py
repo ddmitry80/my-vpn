@@ -6,7 +6,7 @@ import socket
 import base64
 
 import typer
-from dotenv import load_dotenv
+from dotenv import find_dotenv, load_dotenv
 from rich.console import Console
 from rich.panel import Panel
 
@@ -17,24 +17,73 @@ from vpn_cli.utils import (
     get_bin_dir,
 )
 
-# Загружаем переменные из .env
-load_dotenv()
-
 app = typer.Typer(help="Personal VPN manager wrapping Shadowsocks & Tun2Socks")
 console = Console()
 
-# Константы (можно тоже вынести в .env)
-TUN_DEV = os.getenv("TUN_DEV", "tun0")
-TUN_ADDR = os.getenv("TUN_ADDR", "10.255.0.2/24")
-try:
-    SOCKS_PORT = int(os.getenv("SOCKS_PORT", "1080"))
-except ValueError:
-    SOCKS_PORT = 1080
+def _load_env(env_file: str | None) -> None:
+    if env_file:
+        load_dotenv(env_file)
+        return
+    auto = find_dotenv(usecwd=True)
+    if auto:
+        load_dotenv(auto)
 
-def check_root():
-    if os.geteuid() != 0:
-        console.print("[bold red]Ошибка:[/bold red] Запускайте через sudo!")
-        sys.exit(1)
+@app.callback()
+def _main(
+    env_file: str | None = typer.Option(
+        None,
+        "--env-file",
+        help="Path to .env (default: search upward from current directory)",
+    ),
+):
+    _load_env(env_file)
+
+def _get_tun_dev() -> str:
+    return os.getenv("TUN_DEV", "tun0")
+
+def _get_tun_addr() -> str:
+    return os.getenv("TUN_ADDR", "10.255.0.2/24")
+
+def _get_socks_port() -> int:
+    try:
+        return int(os.getenv("SOCKS_PORT", "1080"))
+    except ValueError:
+        return 1080
+
+def _reexec_with_sudo() -> None:
+    preserve = ",".join(
+        [
+            "SS_URL",
+            "SOCKS_PORT",
+            "TUN_DEV",
+            "TUN_ADDR",
+            "MY_VPN_BIN_DIR",
+            "XDG_DATA_HOME",
+        ]
+    )
+    cmd = [
+        "sudo",
+        f"--preserve-env={preserve}",
+        "--",
+        sys.executable,
+        "-m",
+        "vpn_cli.main",
+        *sys.argv[1:],
+    ]
+    console.print("[yellow]Нужен root. Перезапускаю через sudo...[/yellow]")
+    try:
+        os.execvp(cmd[0], cmd)
+    except FileNotFoundError:
+        console.print("[bold red]Ошибка:[/bold red] не найдено `sudo` в PATH.")
+        raise typer.Exit(code=1)
+
+def check_root(*, sudo: bool) -> None:
+    if os.geteuid() == 0:
+        return
+    if sudo:
+        _reexec_with_sudo()
+    console.print("[bold red]Ошибка:[/bold red] Запускайте через sudo (или уберите `--no-sudo`).")
+    raise typer.Exit(code=1)
 
 def parse_ss_url(url: str):
     """Та самая логика парсинга, которую мы чинили"""
@@ -92,6 +141,8 @@ def install_deps():
 @app.command("status")
 def status():
     """Показать состояние (интерфейс/процессы/пути)"""
+    tun_dev = _get_tun_dev()
+    socks_port = _get_socks_port()
     bin_dir = get_bin_dir()
     ensure_bin_dir_in_path(bin_dir)
 
@@ -99,19 +150,19 @@ def status():
     tun_bin = find_binary("tun2socks", bin_dir)
 
     tun_ok = subprocess.run(
-        f"ip link show {TUN_DEV}",
+        f"ip link show {tun_dev}",
         shell=True,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     ).returncode == 0
     ss_ok = subprocess.run(
-        f"pgrep -f \"sslocal.*:{SOCKS_PORT}\"",
+        f"pgrep -f \"sslocal.*:{socks_port}\"",
         shell=True,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     ).returncode == 0
     t2s_ok = subprocess.run(
-        f"pgrep -f \"tun2socks.*{TUN_DEV}\"",
+        f"pgrep -f \"tun2socks.*{tun_dev}\"",
         shell=True,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
@@ -119,7 +170,7 @@ def status():
 
     console.print(
         Panel(
-            f"TUN_DEV: {TUN_DEV} ({'up' if tun_ok else 'down'})\n"
+            f"TUN_DEV: {tun_dev} ({'up' if tun_ok else 'down'})\n"
             f"sslocal: {ss_bin or 'not found'} ({'running' if ss_ok else 'stopped'})\n"
             f"tun2socks: {tun_bin or 'not found'} ({'running' if t2s_ok else 'stopped'})\n"
             f"bin_dir: {bin_dir}",
@@ -128,15 +179,22 @@ def status():
     )
 
 @app.command("stop")
-def stop():
+def stop(
+    sudo: bool = typer.Option(
+        True,
+        "--sudo/--no-sudo",
+        help="Auto-reexec via sudo if needed",
+    ),
+):
     """Остановить VPN (аналог old_scripts/vpn_stop.sh)"""
-    check_root()
+    tun_dev = _get_tun_dev()
+    check_root(sudo=sudo)
     console.print("[1/2] Останавливаем процессы...")
     subprocess.run("pkill sslocal", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     subprocess.run("pkill tun2socks", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-    console.print(f"[2/2] Удаляем интерфейс {TUN_DEV}...")
-    subprocess.run(f"ip link delete {TUN_DEV}", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    console.print(f"[2/2] Удаляем интерфейс {tun_dev}...")
+    subprocess.run(f"ip link delete {tun_dev}", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
         ss_url = os.getenv("SS_URL")
         if ss_url:
@@ -147,9 +205,19 @@ def stop():
     console.print("Готово! VPN выключен, работаем напрямую.")
 
 @app.command("start")
-def start(install_deps: bool = typer.Option(False, "--install-deps", help="Скачать deps (лучше запускать без sudo)")):
+def start(
+    install_deps: bool = typer.Option(False, "--install-deps", help="Скачать deps (лучше запускать без sudo)"),
+    sudo: bool = typer.Option(
+        True,
+        "--sudo/--no-sudo",
+        help="Auto-reexec via sudo if needed",
+    ),
+):
     """Запуск VPN"""
-    check_root()
+    tun_dev = _get_tun_dev()
+    tun_addr = _get_tun_addr()
+    socks_port = _get_socks_port()
+    check_root(sudo=sudo)
 
     bin_dir = get_bin_dir()
     ensure_bin_dir_in_path(bin_dir)
@@ -183,12 +251,12 @@ def start(install_deps: bool = typer.Option(False, "--install-deps", help="Ск�
     tun_log_path = "/tmp/my-vpn-tun2socks.log"
 
     # 1. Запуск SS Local
-    kill_process_on_port(SOCKS_PORT)
+    kill_process_on_port(socks_port)
 
     console.print("[green]Запуск shadowsocks...[/green]")
     ss_log = open(ss_log_path, "ab", buffering=0)
     ss_proc = subprocess.Popen(
-        [ss_bin, "-s", f"{host}:{port}", "-m", method, "-k", password, "-b", f"127.0.0.1:{SOCKS_PORT}", "-U"],
+        [ss_bin, "-s", f"{host}:{port}", "-m", method, "-k", password, "-b", f"127.0.0.1:{socks_port}", "-U"],
         stdout=ss_log,
         stderr=subprocess.STDOUT,
     )
@@ -201,23 +269,23 @@ def start(install_deps: bool = typer.Option(False, "--install-deps", help="Ск�
 
     try:
         # 2. Настройка интерфейса
-        console.print(f"[green]Настройка {TUN_DEV}...[/green]")
-        subprocess.run(f"ip link delete {TUN_DEV}", shell=True, stderr=subprocess.DEVNULL)
-        subprocess.check_call(f"ip tuntap add dev {TUN_DEV} mode tun", shell=True)
-        subprocess.check_call(f"ip addr add {TUN_ADDR} dev {TUN_DEV}", shell=True)
-        subprocess.check_call(f"ip link set dev {TUN_DEV} up", shell=True)
+        console.print(f"[green]Настройка {tun_dev}...[/green]")
+        subprocess.run(f"ip link delete {tun_dev}", shell=True, stderr=subprocess.DEVNULL)
+        subprocess.check_call(f"ip tuntap add dev {tun_dev} mode tun", shell=True)
+        subprocess.check_call(f"ip addr add {tun_addr} dev {tun_dev}", shell=True)
+        subprocess.check_call(f"ip link set dev {tun_dev} up", shell=True)
 
         # 3. Запуск Tun2Socks
         console.print("[green]Запуск tun2socks...[/green]")
         subprocess.run(
-            f"pkill -f \"tun2socks.*{TUN_DEV}\"",
+            f"pkill -f \"tun2socks.*{tun_dev}\"",
             shell=True,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
         tun_log = open(tun_log_path, "ab", buffering=0)
         tun_proc = subprocess.Popen(
-            [tun_bin, "-device", TUN_DEV, "-proxy", f"socks5://127.0.0.1:{SOCKS_PORT}"],
+            [tun_bin, "-device", tun_dev, "-proxy", f"socks5://127.0.0.1:{socks_port}"],
             stdout=tun_log,
             stderr=subprocess.STDOUT,
         )
@@ -227,8 +295,8 @@ def start(install_deps: bool = typer.Option(False, "--install-deps", help="Ск�
         if gw:
             subprocess.run(f"ip route replace {server_ip} via {gw}", shell=True, stderr=subprocess.DEVNULL)
 
-        subprocess.run(f"ip route replace 0.0.0.0/1 dev {TUN_DEV}", shell=True)
-        subprocess.run(f"ip route replace 128.0.0.0/1 dev {TUN_DEV}", shell=True)
+        subprocess.run(f"ip route replace 0.0.0.0/1 dev {tun_dev}", shell=True)
+        subprocess.run(f"ip route replace 128.0.0.0/1 dev {tun_dev}", shell=True)
 
         console.print("[bold green]VPN ПОДКЛЮЧЕН![/bold green] Нажми Ctrl+C для выхода.")
 
@@ -251,7 +319,7 @@ def start(install_deps: bool = typer.Option(False, "--install-deps", help="Ск�
             ss_log.close()
         if "tun_log" in locals():
             tun_log.close()
-        subprocess.run(f"ip link delete {TUN_DEV}", shell=True, stderr=subprocess.DEVNULL)
+        subprocess.run(f"ip link delete {tun_dev}", shell=True, stderr=subprocess.DEVNULL)
         if "server_ip" in locals() and "gw" in locals():
             subprocess.run(f"ip route del {server_ip}", shell=True, stderr=subprocess.DEVNULL)
 

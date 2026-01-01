@@ -5,7 +5,7 @@
 set -euo pipefail
 
 # 1) Устанавливаем portable-бинарники в user-space (без sudo)
-uv run python -m vpn_cli.main install-deps
+uv run my-vpn install-deps
 
-# 2) Стартуем VPN (нужен root для ip/tun/route)
-sudo $(uv run which python) -m vpn_cli.main start
+# 2) Стартуем VPN (нужен root для ip/tun/route, утилита перезапустится через sudo сама)
+uv run my-vpn start

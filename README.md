@@ -15,7 +15,7 @@ $EDITOR .env
 
 ```bash
 uv sync
-uv run python -m vpn_cli.main install-deps
+uv run my-vpn install-deps
 ```
 
 По умолчанию бинарники кладутся в `~/.local/share/my-vpn/bin` (или `$XDG_DATA_HOME/my-vpn/bin`).
@@ -24,18 +24,19 @@ uv run python -m vpn_cli.main install-deps
 3) Запуск (нужен root для сети/маршрутов):
 
 ```bash
-sudo $(uv run which python) -m vpn_cli.main start
+uv run my-vpn start
 ```
 
 ## Команды
 
-- `python -m vpn_cli.main install-deps` — скачать `sslocal` и `tun2socks` в user-space
-- `sudo python -m vpn_cli.main start` — запустить VPN
-- `sudo python -m vpn_cli.main stop` — остановить VPN
-- `python -m vpn_cli.main status` — состояние интерфейса/процессов/путей
+- `my-vpn install-deps` — скачать `sslocal` и `tun2socks` в user-space
+- `my-vpn start` — запустить VPN (если нужен root, утилита сама перезапустится через `sudo`)
+- `my-vpn stop` — остановить VPN (если нужен root, утилита сама перезапустится через `sudo`)
+- `my-vpn status` — состояние интерфейса/процессов/путей
+
+Если используешь `uv`, просто добавь префикс: `uv run my-vpn ...`.
 
 ## Логи
 
 - `sslocal`: `/tmp/my-vpn-sslocal.log`
 - `tun2socks`: `/tmp/my-vpn-tun2socks.log`
-
