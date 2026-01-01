@@ -22,6 +22,7 @@ app = typer.Typer(help="Personal VPN manager wrapping Shadowsocks & Tun2Socks")
 console = Console()
 
 def _load_env(env_file: str | None) -> None:
+    """Загрузить конфигурацию из `.env` по приоритетам CLI/окружения."""
     if env_file:
         load_dotenv(env_file)
         return
@@ -41,21 +42,26 @@ def _main(
         help="Path to .env (default: $XDG_CONFIG_HOME/my-vpn/.env, then search upward from current directory)",
     ),
 ):
+    """Точка входа CLI: подгружает `.env` перед выполнением команды."""
     _load_env(env_file)
 
 def _get_tun_dev() -> str:
+    """Имя TUN-интерфейса (по умолчанию `tun0`)."""
     return os.getenv("TUN_DEV", "tun0")
 
 def _get_tun_addr() -> str:
+    """IPv4-адрес/маска для TUN-интерфейса (по умолчанию `10.255.0.2/24`)."""
     return os.getenv("TUN_ADDR", "10.255.0.2/24")
 
 def _get_socks_port() -> int:
+    """Порт локального SOCKS5 для `sslocal` (по умолчанию `1080`)."""
     try:
         return int(os.getenv("SOCKS_PORT", "1080"))
     except ValueError:
         return 1080
 
 def _reexec_with_sudo() -> None:
+    """Перезапустить текущую команду через `sudo`, сохранив нужные переменные окружения."""
     preserve = ",".join(
         [
             "SS_URL",
@@ -85,6 +91,7 @@ def _reexec_with_sudo() -> None:
         raise typer.Exit(code=1)
 
 def check_root(*, sudo: bool) -> None:
+    """Проверить права root; при необходимости перезапустить через `sudo` или завершиться с ошибкой."""
     if os.geteuid() == 0:
         return
     if sudo:
@@ -93,7 +100,11 @@ def check_root(*, sudo: bool) -> None:
     raise typer.Exit(code=1)
 
 def parse_ss_url(url: str):
-    """Та самая логика парсинга, которую мы чинили"""
+    """
+    Распарсить `ss://` URL из конфигурации.
+
+    Возвращает: `(host, port, method, password, server_ip)`, где `server_ip` — результат DNS-резолва (если доступен).
+    """
     if not url:
         raise ValueError("URL is empty")
     url = url.replace("ss://", "").split("#")[0].split("?")[0]
@@ -121,7 +132,7 @@ def parse_ss_url(url: str):
     return host, port, method, password, server_ip
 
 def kill_process_on_port(port: int):
-    """Аналог fuser -k"""
+    """Освободить TCP порт, если он занят (best-effort, без падения при ошибках)."""
     try:
         # Ищем PID, слушающий порт
         result = subprocess.check_output(f"ss -lptn 'sport = :{port}'", shell=True).decode()
@@ -134,7 +145,7 @@ def kill_process_on_port(port: int):
 
 @app.command("install-deps")
 def install_deps():
-    """Скачать sslocal и tun2socks в user-space (portable)"""
+    """Скачать `sslocal` и `tun2socks` в user-space (portable)."""
     if os.geteuid() == 0:
         console.print("[yellow]Подсказка:[/yellow] обычно лучше запускать install-deps без sudo.")
     deps = check_and_install_deps()
@@ -147,7 +158,7 @@ def install_deps():
 
 @app.command("status")
 def status():
-    """Показать состояние (интерфейс/процессы/пути)"""
+    """Показать состояние: TUN-интерфейс, процессы, пути к бинарникам."""
     tun_dev = _get_tun_dev()
     socks_port = _get_socks_port()
     bin_dir = get_bin_dir()
@@ -193,7 +204,7 @@ def stop(
         help="Auto-reexec via sudo if needed",
     ),
 ):
-    """Остановить VPN (аналог old_scripts/vpn_stop.sh)"""
+    """Остановить VPN: убить процессы, удалить TUN и маршрут до сервера (best-effort)."""
     tun_dev = _get_tun_dev()
     check_root(sudo=sudo)
     console.print("[1/2] Останавливаем процессы...")
@@ -220,7 +231,7 @@ def start(
         help="Auto-reexec via sudo if needed",
     ),
 ):
-    """Запуск VPN"""
+    """Запустить VPN: поднять TUN, запустить `sslocal` + `tun2socks`, прописать маршруты."""
     tun_dev = _get_tun_dev()
     tun_addr = _get_tun_addr()
     socks_port = _get_socks_port()

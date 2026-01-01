@@ -76,6 +76,7 @@ def get_env_file() -> Path | None:
     return candidate if candidate.exists() else None
 
 def ensure_bin_dir_in_path(bin_dir: Path) -> None:
+    """Добавить `bin_dir` в начало `PATH`, если он ещё не присутствует."""
     bin_dir_str = str(bin_dir)
     current = os.environ.get("PATH", "")
     parts = [p for p in current.split(os.pathsep) if p]
@@ -85,13 +86,14 @@ def ensure_bin_dir_in_path(bin_dir: Path) -> None:
         os.environ["PATH"] = bin_dir_str + os.pathsep + current
 
 def find_binary(name: str, bin_dir: Path) -> str | None:
+    """Найти исполняемый файл: сначала в `bin_dir`, затем через `PATH`."""
     local = bin_dir / name
     if local.exists() and os.access(local, os.X_OK):
         return str(local)
     return shutil.which(name)
 
 def get_architecture():
-    """Определяем архитектуру системы для выбора правильного бинарника"""
+    """Определить архитектуру для релизов `sslocal` и `tun2socks`."""
     arch = platform.machine().lower()
     if arch in ["x86_64", "amd64"]:
         return "x86_64", "amd64"  # (для SS, для Tun2Socks)
@@ -102,7 +104,7 @@ def get_architecture():
         sys.exit(1)
 
 def download_file(url: str, dest_path: Path):
-    """Скачивание файла с прогресс-баром"""
+    """Скачать файл по `url` в `dest_path`, показывая прогресс-бар."""
     with requests.get(url, stream=True, timeout=(10, 60), headers={"User-Agent": "my-vpn/0.1"}) as r:
         r.raise_for_status()
         total_len = int(r.headers.get('content-length', 0))
@@ -120,6 +122,7 @@ def download_file(url: str, dest_path: Path):
                     progress.update(task, advance=len(chunk))
 
 def _extract_tar_member(tar: tarfile.TarFile, member_name: str) -> bytes:
+    """Прочитать конкретный файл из tar-архива и вернуть его содержимое."""
     member = None
     for cand in tar.getmembers():
         if cand.name == member_name or cand.name.endswith("/" + member_name):
@@ -133,6 +136,7 @@ def _extract_tar_member(tar: tarfile.TarFile, member_name: str) -> bytes:
     return fileobj.read()
 
 def _extract_zip_member(zip_ref: zipfile.ZipFile, member_name: str) -> bytes:
+    """Прочитать конкретный файл из zip-архива и вернуть его содержимое."""
     chosen = None
     for cand in zip_ref.infolist():
         if cand.filename == member_name or cand.filename.endswith("/" + member_name):
@@ -143,7 +147,7 @@ def _extract_zip_member(zip_ref: zipfile.ZipFile, member_name: str) -> bytes:
     return zip_ref.read(chosen)
 
 def install_shadowsocks(bin_dir: Path) -> Path:
-    """Portable-установка Shadowsocks (sslocal) в bin_dir"""
+    """Portable-установка Shadowsocks (`sslocal`) в `bin_dir` (если ещё не установлен)."""
     ss_arch, _ = get_architecture()
     filename = f"shadowsocks-v{SS_VERSION}.{ss_arch}-unknown-linux-gnu.tar.xz"
     url = f"https://github.com/shadowsocks/shadowsocks-rust/releases/download/v{SS_VERSION}/{filename}"
@@ -178,7 +182,7 @@ def install_shadowsocks(bin_dir: Path) -> Path:
             sys.exit(1)
 
 def install_tun2socks(bin_dir: Path) -> Path:
-    """Portable-установка Tun2Socks в bin_dir"""
+    """Portable-установка `tun2socks` в `bin_dir` (если ещё не установлен)."""
     _, t2s_arch = get_architecture()
     filename = f"tun2socks-linux-{t2s_arch}.zip"
     url = f"https://github.com/xjasonlyu/tun2socks/releases/download/{T2S_VERSION}/{filename}"
@@ -215,7 +219,7 @@ def install_tun2socks(bin_dir: Path) -> Path:
             sys.exit(1)
 
 def check_and_install_deps() -> dict[str, Path]:
-    """Главная функция проверки"""
+    """Проверить наличие `sslocal`/`tun2socks` и установить их при необходимости."""
     bin_dir = get_bin_dir()
     ss_path = install_shadowsocks(bin_dir)
     t2s_path = install_tun2socks(bin_dir)
