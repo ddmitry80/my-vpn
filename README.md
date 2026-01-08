@@ -4,6 +4,18 @@
 
 Важно: команды `start/stop` меняют маршруты и поднимают TUN-интерфейс. Используй осознанно — можно “уронить” сеть.
 
+## Требования
+
+- Python >= 3.10
+- `uv` (используется ниже для установки/запуска CLI)
+
+### Ubuntu / WSL2 (Ubuntu)
+
+```bash
+sudo snap install astral-uv --classic
+uv --version
+```
+
 ## Быстрый старт
 
 1) Конфиг:
@@ -27,6 +39,8 @@ my-vpn --env-file /path/to/.env status
 uv tool install -e .
 ```
 
+Если после установки команда `my-vpn` не находится, проверь, что `~/.local/bin` есть в `PATH` (или открой новый shell).
+
 Для разработки в репозитории можно использовать: `uv sync` и `uv run my-vpn ...`.
 
 3) Зависимости (portable user-space, без sudo):
@@ -43,6 +57,8 @@ my-vpn install-deps
 ```bash
 my-vpn start
 ```
+
+Важно: не запускай `sudo my-vpn start` — утилита сама запросит sudo и перезапустится корректно.
 
 ## Команды
 
